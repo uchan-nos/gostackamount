@@ -40,20 +40,40 @@ import re
 
 
 FILE_HEADER = re.compile(r'^goroutine profile: total \d+$')
-FRAME_HEADER = re.compile(r'^(\d+) @((?: 0x[0-9a-f]+)+)$')
-LINE = re.compile(r'^#\t(0x[0-9a-f]+)\t(\S+)\t(.+)$')
+FRAME_HEADER = re.compile(r'^(?P<num>\d+) @(?P<pcs>[ x0-9a-f]+)$')
 
-Frame = namedtuple('Frame', ['count', 'pcs', 'detail'])
-FrameDetail = namedtuple('FrameDetail', ['pc', 'pc_name', 'displacement', 'file_line'])
+Frame = namedtuple('Frame', ['count', 'pcs'])
+FuncAddrRange = namedtuple('FuncAddrRange', ['begin', 'end'])
 
 
-def split_pc_name_displacemnt(pc_name_displacement):
-    elems = pc_name_displacement.split('+')
-    if len(elems) == 2:
-        disp = int(elems[1], base=16)
-        return elems[0], disp
-    if len(elems) == 1:
-        return elems[0], None
+def find_func(some_addr, func_addr_range):
+    for func_name, addr_range in func_addr_range.items():
+        if addr_range.begin <= some_addr <= addr_range.end:
+            return func_name
+    return None
+
+
+def print_frame_stack_amount(frame, func_stack_amount, func_addr_range):
+    print('{} @{}'.format(frame.count, frame.pcs))
+
+    stack_amount_for_this_frame = 0
+    for pc in frame.pcs.split():
+        addr = int(pc, base=16)
+        func_name = find_func(addr, func_addr_range)
+        if not func_name:
+            raise RuntimeError('failed to search', pc)
+
+        stack_amount = func_stack_amount.get(func_name)
+        print('#\t{}\t{}\tstack:{}'.format(
+            pc, func_name, stack_amount))
+        if stack_amount is not None:
+            stack_amount_for_this_frame += stack_amount
+
+    if stack_amount_for_this_frame < 4 * 1024:
+        stack_amount_for_this_frame = 4 * 1024
+    pow2_amount = int(math.pow(2, math.ceil(math.log2(stack_amount_for_this_frame))))
+
+    print('total stack (estimated): {}'.format(frame.count * pow2_amount))
 
 
 def main():
@@ -64,10 +84,14 @@ def main():
     ns = parser.parse_args()
 
     func_stack_amount = {}
+    func_addr_range = {}
     with open(ns.stack_amount_tsv) as f:
         for line in f:
-            func_name, amount = line.split('\t')
+            func_name, addr_begin, addr_end, amount = line.split('\t')
             func_stack_amount[func_name] = int(amount.strip())
+            func_addr_range[func_name] = FuncAddrRange(
+                int(addr_begin, base=16),
+                int(addr_end, base=16))
 
     with open(ns.goroutine_txt) as f:
         line = f.readline()
@@ -75,48 +99,16 @@ def main():
         if not m:
             raise RuntimeError('unknown file format')
 
-        waiting_frame = True
         frames = []
         for line in f:
-            if line == '\n':
-                waiting_frame = True
-                continue
-
             m = FRAME_HEADER.match(line)
-            if m:
-                if not waiting_frame:
-                    raise RuntimeError('unknown file format')
-                waiting_frame = False
-                frame = Frame(count=int(m.group(1)), pcs=m.group(2), detail=[])
-                frames.append(frame)
+            if not m:
                 continue
-
-            m = LINE.match(line)
-            if m:
-                if waiting_frame:
-                    raise RuntimeError('unknown file format')
-                pc_name, disp = split_pc_name_displacemnt(m.group(2))
-                detail = FrameDetail(pc=int(m.group(1), base=16),
-                                     pc_name=pc_name,
-                                     displacement=disp,
-                                     file_line=m.group(3))
-                frames[-1].detail.append(detail)
+            frame = Frame(count=int(m.group('num')), pcs=m.group('pcs'))
+            frames.append(frame)
 
     for frame in frames:
-        print('{} @{}'.format(frame.count, frame.pcs))
-        stack_amount_for_this_frame = 0
-        for detail in frame.detail:
-            stack_amount = func_stack_amount.get(detail.pc_name)
-            print('#\t0x{:x}\t{}+0x{:x}\tstack:{}'.format(
-                detail.pc, detail.pc_name, detail.displacement, stack_amount))
-            if stack_amount is not None:
-                stack_amount_for_this_frame += stack_amount
-
-        if stack_amount_for_this_frame < 4 * 1024:
-            stack_amount_for_this_frame = 4 * 1024
-        pow2_amount = int(math.pow(2, math.ceil(math.log2(stack_amount_for_this_frame))))
-
-        print('total stack (estimated): {}'.format(frame.count * pow2_amount))
+        print_frame_stack_amount(frame, func_stack_amount, func_addr_range)
         print()
 
 

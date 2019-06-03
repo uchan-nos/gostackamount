@@ -22,6 +22,8 @@ MemStats は [expvar](https://golang.org/pkg/expvar/) パッケージを利用�
 `your-binary` は対象とする Golang 製プログラムへのパスを指定します．`objdump -d` は対称のプログラムを逆アセンブルします．
 `stack_amount.py` コマンドは，現状では x86-64 向けバイナリ（の逆アセンブル結果）にのみ対応しています．
 
+出力された `stack_amount.tsv` には，関数名，その関数のアドレス範囲，その関数が消費するスタック量が記載されています．
+
 つぎに，pprof を仕込んだ対象プログラムを起動し，goroutine のダンプを取得します．
 一瞬で終了してしまうプログラムではこの手法は使えません．
 
@@ -36,9 +38,12 @@ MemStats は [expvar](https://golang.org/pkg/expvar/) パッケージを利用�
 `goroutine_stack_amount.py` コマンドの出力は次のようになります．
 
     1 @ 0x42e01a 0x42e0ce 0x449b96 0x6d7e88 0x42dbc2 0x45aa41
-    #	0x449b95	time.Sleep+0x165	stack:96
-    #	0x6d7e87	main.main+0x47	stack:32
-    #	0x42dbc1	runtime.main+0x211	stack:88
+    #	0x42e01a	runtime.gopark	stack:32
+    #	0x42e0ce	runtime.goparkunlock	stack:64
+    #	0x449b96	time.Sleep	stack:96
+    #	0x6d7e88	main.main	stack:32
+    #	0x42dbc2	runtime.main	stack:88
+    #	0x45aa41	runtime.goexit	stack:8
     total stack (estimated): 4096
 
     1 @ ...
@@ -89,7 +94,7 @@ Golang ではスタック領域はヒープ領域から取得されます．
 goroutine が終了すると，一部のスタックはヒープ領域に戻されます．
 
 スタック消費量の推定は，次のロジックで行います．
-- スタックフレームの各関数が消費するスタック（M）の総和が 4KiB 未満なら，スタックフレーム 1 つが消費するスタック量は 4KiB とする．
+- ある goroutine のスタックフレームの各関数が消費するスタック（M）の総和が 4KiB 未満なら，goroutine 1 つが消費するスタック量は 4KiB とする．
 - 各関数が消費するスタックの総和が 4KiB 以上であれば，2 の冪数に切り上げた数値をスタック量とする．
 
 これで得られた 1 つのスタックフレームのスタック消費量に，そのスタックフレームを持つ goroutine の数（N）を掛けた数値を `total stack` として表示します．
