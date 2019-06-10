@@ -19,7 +19,7 @@ This module prints like following:
     #	0x449b95	time.Sleep+0x165	stack:96
     #	0x6d7e87	main.main+0x47	stack:32
     #	0x42dbc1	runtime.main+0x211	stack:88
-    total stack (estimated): 4096
+    total stack (estimated): 2048
 
 Stack frames are separated by a blank line.
 
@@ -69,8 +69,10 @@ def print_frame_stack_amount(frame, func_stack_amount, func_addr_range):
         if stack_amount is not None:
             stack_amount_for_this_frame += stack_amount
 
-    if stack_amount_for_this_frame < 4 * 1024:
-        stack_amount_for_this_frame = 4 * 1024
+    # stack default size == 2KiB
+    # _StackMin constant defined in https://github.com/golang/go/blob/master/src/runtime/stack.go
+    if stack_amount_for_this_frame < 2 * 1024:
+        stack_amount_for_this_frame = 2 * 1024
     pow2_amount = int(math.pow(2, math.ceil(math.log2(stack_amount_for_this_frame))))
 
     print('total stack (estimated): {}'.format(frame.count * pow2_amount))
