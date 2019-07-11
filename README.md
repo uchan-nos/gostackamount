@@ -19,7 +19,7 @@ MemStats は [expvar](https://golang.org/pkg/expvar/) パッケージを利用�
 
     $ objdump -d -M intel your-binary | ./stack_amount.py > stack_amount.tsv
 
-`your-binary` は対象とする Golang 製プログラムへのパスを指定します．`objdump -d` は対称のプログラムを逆アセンブルします．
+`your-binary` は対象とする Golang 製プログラムへのパスを指定します．`objdump -d` は対象のプログラムを逆アセンブルします．
 `stack_amount.py` コマンドは，現状では x86-64 向けバイナリ（の逆アセンブル結果）にのみ対応しています．
 
 出力された `stack_amount.tsv` には，関数名，その関数のアドレス範囲，その関数が消費するスタック量が記載されています．
